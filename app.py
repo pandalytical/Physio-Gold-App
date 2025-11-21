@@ -1,47 +1,76 @@
 import streamlit as st
 import google.generativeai as genai
+from pypdf import PdfReader
 
 # 1. CONFIGURATION & SETUP
 st.set_page_config(page_title="PhysioGold AI", layout="wide")
 
-# --- THE FIX: Initialize Chat History IMMEDIATELY ---
+# Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Function to extract text from PDF
+def get_pdf_text(pdf_docs):
+    text = ""
+    for pdf in pdf_docs:
+        pdf_reader = PdfReader(pdf)
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+    return text
 
 # 2. SIDEBAR - The "Control Panel"
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3774/3774299.png", width=50)
     st.title("PhysioGold Settings")
     
-    # The API Key Input (Secure)
+    # Security & Mode
     api_key = st.text_input("Enter Google API Key", type="password")
-    
-    # The Magic Toggle
     mode = st.radio("Select User Mode:", ["Patient Intake", "Clinician Mentor"])
     
-    st.info("⚠️ PROTOTYPE MODE: Do not enter real PII (Names/DOB).")
+    st.divider()
+    
+    # KNOWLEDGE BASE UPLOADER
+    st.subheader("📚 Knowledge Base")
+    st.write("Upload APTA/FSBPT Guidelines here:")
+    uploaded_files = st.file_uploader("Upload PDFs", accept_multiple_files=True, type="pdf")
+    
+    st.info("⚠️ PROTOTYPE MODE: Do not enter real PII.")
 
-# 3. INITIALIZE AI (The Brain)
+# 3. INITIALIZE AI
 if api_key:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    # System Instructions based on Toggle
+    # Process Uploaded PDFs
+    knowledge_base_text = ""
+    if uploaded_files:
+        with st.spinner("Reading Guidelines..."):
+            knowledge_base_text = get_pdf_text(uploaded_files)
+            st.success("Guidelines Loaded!")
+
+    # Dynamic System Instructions
+    base_instruction = ""
     if mode == "Patient Intake":
-        system_instruction = """
-        ROLE: You are an empathetic Intake Assistant for Physical Therapy. 
-        GOAL: Collect Subjective History and 'Way of Life' data (Job, Hobbies, Goals).
+        base_instruction = """
+        ROLE: You are an empathetic Intake Assistant. 
+        GOAL: Collect Subjective History and 'Way of Life' data (Job, Hobbies).
         RULES: Use 6th-grade language. Do NOT diagnose. Ask 1 question at a time.
         """
     else: # Clinician Mode
-        system_instruction = """
-        ROLE: You are an expert Clinical Mentor (PT Specialist).
-        GOAL: Analyze data, challenge diagnosis (Socratic method), and check Red Flags.
-        RULES: Use medical terminology. Cite JOSPT guidelines. Suggest specific Special Tests with Likelihood Ratios.
+        base_instruction = """
+        ROLE: You are an expert Clinical Mentor.
+        GOAL: Analyze data, challenge diagnosis, and check Red Flags.
+        RULES: Use medical terminology. Cite specific evidence from the provided Reference Documents.
         """
+    
+    # INJECT THE KNOWLEDGE
+    if knowledge_base_text:
+        system_instruction = base_instruction + f"\n\nIMPORTANT REFERENCE DOCUMENTS (Adhere strictly to these):\n{knowledge_base_text}"
+    else:
+        system_instruction = base_instruction
+
 else:
-    # If no key is provided yet, set a placeholder instruction
-    system_instruction = "Please enter an API Key."
+    system_instruction = "Please enter API Key."
 
 # 4. THE MAIN INTERFACE
 st.title(f"PhysioGold: {mode} Mode")
@@ -56,14 +85,11 @@ if prompt := st.chat_input("Type here..."):
     if not api_key:
         st.error("Please enter an API Key in the sidebar to start.")
     else:
-        # User Message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # AI Response Logic
         try:
-            # Combine system instruction with chat history for context
             full_prompt = system_instruction + "\n\nUser History:\n" 
             for m in st.session_state.messages:
                 full_prompt += f"{m['role']}: {m['content']}\n"
@@ -72,7 +98,6 @@ if prompt := st.chat_input("Type here..."):
                 response = model.generate_content(full_prompt)
                 st.markdown(response.text)
                 
-            # Save AI response
             st.session_state.messages.append({"role": "assistant", "content": response.text})
             
         except Exception as e:
