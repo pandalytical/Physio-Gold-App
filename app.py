@@ -31,15 +31,29 @@ with st.sidebar:
     
     # KNOWLEDGE BASE UPLOADER
     st.subheader("📚 Knowledge Base")
-    st.write("Upload APTA/FSBPT Guidelines here:")
-    uploaded_files = st.file_uploader("Upload PDFs", accept_multiple_files=True, type="pdf")
+    uploaded_files = st.file_uploader("Upload APTA/FSBPT PDFs", accept_multiple_files=True, type="pdf")
     
-    st.info("⚠️ PROTOTYPE MODE: Do not enter real PII.")
+    # --- DEBUGGING TOOL ---
+    if api_key:
+        with st.expander("🛠️ Troubleshooting"):
+            if st.button("Check Available Models"):
+                try:
+                    genai.configure(api_key=api_key)
+                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    st.write("Available Models:", models)
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 # 3. INITIALIZE AI
 if api_key:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # --- TRYING THE NEWEST MODEL ---
+    # If 2.5 fails, use the Troubleshooting tool to find the valid name
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+    except:
+        model = genai.GenerativeModel('gemini-pro') # Fallback to standard
     
     # Process Uploaded PDFs
     knowledge_base_text = ""
