@@ -9,7 +9,7 @@ st.set_page_config(page_title="PhysioGold AI", layout="wide")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Function to extract text from PDF
+# --- HELPER FUNCTIONS ---
 def get_pdf_text(pdf_docs):
     text = ""
     for pdf in pdf_docs:
@@ -17,6 +17,21 @@ def get_pdf_text(pdf_docs):
         for page in pdf_reader.pages:
             text += page.extract_text()
     return text
+
+def get_active_model_name(api_key):
+    """Finds the first available model that supports chat."""
+    try:
+        genai.configure(api_key=api_key)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name: # Prefer faster models
+                    return m.name
+        # If no flash model, return the first valid one
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                return m.name
+    except:
+        return "models/gemini-1.5-flash" # Fallback default
 
 # 2. SIDEBAR - The "Control Panel"
 with st.sidebar:
@@ -33,27 +48,20 @@ with st.sidebar:
     st.subheader("📚 Knowledge Base")
     uploaded_files = st.file_uploader("Upload APTA/FSBPT PDFs", accept_multiple_files=True, type="pdf")
     
-    # --- DEBUGGING TOOL ---
+    # --- DEBUG INFO ---
     if api_key:
-        with st.expander("🛠️ Troubleshooting"):
-            if st.button("Check Available Models"):
-                try:
-                    genai.configure(api_key=api_key)
-                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    st.write("Available Models:", models)
-                except Exception as e:
-                    st.error(f"Error: {e}")
+        active_model = get_active_model_name(api_key)
+        st.caption(f"🟢 Connected to: {active_model}")
 
 # 3. INITIALIZE AI
 if api_key:
     genai.configure(api_key=api_key)
     
-    # --- TRYING THE NEWEST MODEL ---
-    # If 2.5 fails, use the Troubleshooting tool to find the valid name
+    # Auto-select the working model found above
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+        model = genai.GenerativeModel(active_model)
     except:
-        model = genai.GenerativeModel('gemini-pro') # Fallback to standard
+        st.error("Could not connect to Google AI. Check your API Key.")
     
     # Process Uploaded PDFs
     knowledge_base_text = ""
