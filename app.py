@@ -4,6 +4,10 @@ import google.generativeai as genai
 # 1. CONFIGURATION & SETUP
 st.set_page_config(page_title="PhysioGold AI", layout="wide")
 
+# --- THE FIX: Initialize Chat History IMMEDIATELY ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 # 2. SIDEBAR - The "Control Panel"
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3774/3774299.png", width=50)
@@ -21,15 +25,11 @@ with st.sidebar:
 if api_key:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
-
-    # Initialize Chat History if not present
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
     
     # System Instructions based on Toggle
     if mode == "Patient Intake":
         system_instruction = """
-        ROLE: You are an empathetic Intake Assistant. 
+        ROLE: You are an empathetic Intake Assistant for Physical Therapy. 
         GOAL: Collect Subjective History and 'Way of Life' data (Job, Hobbies, Goals).
         RULES: Use 6th-grade language. Do NOT diagnose. Ask 1 question at a time.
         """
@@ -39,6 +39,9 @@ if api_key:
         GOAL: Analyze data, challenge diagnosis (Socratic method), and check Red Flags.
         RULES: Use medical terminology. Cite JOSPT guidelines. Suggest specific Special Tests with Likelihood Ratios.
         """
+else:
+    # If no key is provided yet, set a placeholder instruction
+    system_instruction = "Please enter an API Key."
 
 # 4. THE MAIN INTERFACE
 st.title(f"PhysioGold: {mode} Mode")
